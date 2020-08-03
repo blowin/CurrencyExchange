@@ -2,6 +2,7 @@
 
 open System
 open System.Collections.Generic
+open System.Text
 open FSharp.Data
 open Microsoft.FSharp.Reflection
 
@@ -181,6 +182,11 @@ type CurrencyCode =
     | ZWL
 
 [<Struct>]
+type SelectCurrency =
+    | All
+    | Only of CurrencyCode array
+
+[<Struct>]
 type CurrencyInfo = {
     code: CurrencyCode
     description: string
@@ -192,10 +198,12 @@ type CurrencyRate = {
     rate: decimal
 }
 
+module private Api =
+    type CurrencyInfo = JsonProvider<"https://api.exchangerate.host/symbols">
+    type CurrencyByDate = JsonProvider<"https://api.exchangerate.host/2020-08-03">
+    type CurrencyByDateRange = JsonProvider<"https://api.exchangerate.host/timeseries?start_date=2020-01-01&end_date=2020-01-04">
+
 module private Types =
-        type CurrencyInfoApi = JsonProvider<"https://api.exchangerate.host/symbols">
-        type CurrencyByDateApi = JsonProvider<"https://api.exchangerate.host/2020-08-03">
-        type CurrencyByDateRangeApi = JsonProvider<"https://api.exchangerate.host/timeseries?start_date=2020-01-01&end_date=2020-01-04">
         type public CurrencyRateStore = Dictionary<CurrencyCode, decimal>
         
         let CurrencyCodeMap =
@@ -251,8 +259,27 @@ module Currency =
                     )
                )
     
+    let private dateTimeAsString (date: DateTime) = date.ToString("yyyy-MM-dd")
+    
+    let private AsString obj = obj.ToString()
+    
+    let private appendCurrencyInfo (currencyInfo: SelectCurrency) url =
+        
+        match currencyInfo with
+            | All -> url
+            | Only arr ->
+                if arr = null || arr.Length = 0 then url
+                else
+                    let builder = (StringBuilder(value = url).Append("?symbols=").Append(arr.[0]))
+                    arr
+                        |> Seq.skip 1
+                        |> Seq.fold
+                               (fun (buff: StringBuilder) o -> buff.Append(',').Append(o))
+                               (builder)
+                        |> AsString
+    
     let allCurrency =
-        let parseInfo = Types.CurrencyInfoApi.GetSample()
+        let parseInfo = Api.CurrencyInfo.GetSample()
         if parseInfo.Success then
             let result = (parseInfo.Symbols.JsonValue.Properties()
                     |> Seq.map (fun (strCode, obj) ->
@@ -274,9 +301,9 @@ module Currency =
         else
             ValueNone
     
-    let between (dateFrom: DateTime) (dateTo: DateTime) =
-        let url = sprintf "https://api.exchangerate.host/timeseries?start_date=%s&end_date=%s" (dateFrom.ToString "yyyy-MM-dd") (dateTo.ToString "yyyy-MM-dd")
-        let info = Types.CurrencyByDateRangeApi.Load(url)
+    let between (dateFrom: DateTime) (dateTo: DateTime) (selectCurrency: SelectCurrency) =
+        let url = (sprintf "https://api.exchangerate.host/timeseries?start_date=%s&end_date=%s" (dateFrom |> dateTimeAsString) (dateTo |> dateTimeAsString)) |> appendCurrencyInfo selectCurrency
+        let info = Api.CurrencyByDateRange.Load(url)
         
         let parseInt (str: string) =
             let (ok, result) = Int32.TryParse(str)
@@ -305,9 +332,9 @@ module Currency =
         else
             ValueNone
     
-    let byDate (date: DateTime) =
-        let url = sprintf "https://api.exchangerate.host/%s" (date.ToString "yyyy-MM-dd")
-        let info = Types.CurrencyByDateApi.Load(url)
+    let byDate (date: DateTime) (selectCurrency: SelectCurrency) =
+        let url = (sprintf "https://api.exchangerate.host/%s" (date |> dateTimeAsString)) |> appendCurrencyInfo selectCurrency
+        let info = Api.CurrencyByDate.Load(url)
         
         if info.Success then
             let exchangeRateSeq = Factory.convertJsonToExchangeRateSeq info.Rates.JsonValue

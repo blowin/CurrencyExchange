@@ -181,12 +181,19 @@ type CurrencyCode =
     | ZWL
 
 [<Struct>]
+type CurrencyInfo = {
+    code: CurrencyCode
+    description: string
+}
+
+[<Struct>]
 type CurrencyRate = {
     code: CurrencyCode
     rate: decimal
 }
 
 module private Types =
+        type CurrencyInfoApi = JsonProvider<"https://api.exchangerate.host/symbols">
         type CurrencyByDateApi = JsonProvider<"https://api.exchangerate.host/2020-08-03">
         type CurrencyByDateRangeApi = JsonProvider<"https://api.exchangerate.host/timeseries?start_date=2020-01-01&end_date=2020-01-04">
         type public CurrencyRateStore = Dictionary<CurrencyCode, decimal>
@@ -243,6 +250,29 @@ module Currency =
                         fun (name, value) -> struct(name, (value.AsDecimal()))
                     )
                )
+    
+    let allCurrency =
+        let parseInfo = Types.CurrencyInfoApi.GetSample()
+        if parseInfo.Success then
+            let result = (parseInfo.Symbols.JsonValue.Properties()
+                    |> Seq.map (fun (strCode, obj) ->
+                            match obj.TryGetProperty("description") with
+                                | Some description ->
+                                    let (isOk, code) = Types.CurrencyCodeMap.TryGetValue(strCode)
+                                    if isOk then 
+                                        ValueSome { code = code; description = description.AsString() }
+                                    else
+                                        ValueNone
+                                | None -> ValueNone
+                        )
+                    |> Seq.filter (fun x -> x.IsSome)
+                    |> Seq.map (fun x -> x.Value)
+                    |> Seq.toArray
+                )
+            
+            ValueSome result
+        else
+            ValueNone
     
     let between (dateFrom: DateTime) (dateTo: DateTime) =
         let url = sprintf "https://api.exchangerate.host/timeseries?start_date=%s&end_date=%s" (dateFrom.ToString "yyyy-MM-dd") (dateTo.ToString "yyyy-MM-dd")

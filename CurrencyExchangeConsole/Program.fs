@@ -2,8 +2,7 @@
 open CurrencyExchange
 
 [<EntryPoint>]
-let main argv =    
-    let result = Currency.between (DateTime.Today.Subtract(TimeSpan.FromDays(float 2))) DateTime.Today
+let main argv =
     let result = Currency.byDate DateTime.Today
     match result with
         | ValueSome converter ->

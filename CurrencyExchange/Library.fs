@@ -180,40 +180,16 @@ type CurrencyCode =
     | ZMW
     | ZWL
 
-type CurrencyRateStore = Dictionary<CurrencyCode, decimal>
-
 [<Struct>]
 type CurrencyRate = {
-    name: CurrencyCode
+    code: CurrencyCode
     rate: decimal
 }
 
-type CurrencyConverter(baseCurrency: CurrencyRate, rates: CurrencyRateStore, date: DateTime) =
-    member this.BaseCurrency = baseCurrency.name
-    member this.Date = date
-    member this.Rates = rates |> Seq.map (fun x -> {name = x.Key; rate = x.Value})
-    member this.CurrencyList = rates |> Seq.map (fun x -> x.Key)
-        
-    member this.Convert (currencyFrom: CurrencyCode) (currencyTo: CurrencyCode) sum =
-        let convertCore (sum: decimal) rateTo rateFrom = Math.Round(sum * rateTo / rateFrom, 2)
-        
-        let (toFound, toRate) = rates.TryGetValue(currencyTo)
-        if toFound then 
-            if currencyFrom = this.BaseCurrency then
-                ValueSome (convertCore sum toRate 1m)
-            else
-                let (found, value) = rates.TryGetValue(currencyFrom)
-                if found then
-                    ValueSome (convertCore sum toRate value)
-                else
-                    ValueNone
-        else
-            ValueNone
-        
-module Currency =
-    module private Types =
+module private Types =
         type CurrencyByDateApi = JsonProvider<"https://api.exchangerate.host/2020-08-03">
         type CurrencyByDateRangeApi = JsonProvider<"https://api.exchangerate.host/timeseries?start_date=2020-01-01&end_date=2020-01-04">
+        type public CurrencyRateStore = Dictionary<CurrencyCode, decimal>
         
         let CurrencyCodeMap =
             let map = Dictionary<CurrencyName, CurrencyCode>()
@@ -224,17 +200,40 @@ module Currency =
                         map.Add(x.Name, currencyCode)
                     )
             map
+
+type CurrencyConverter(baseCurrency: CurrencyRate, rates: Types.CurrencyRateStore, date: DateTime) =
+    member this.Date = date
+    member this.Rates = rates |> Seq.map (fun x -> {code = x.Key; rate = x.Value})
+    member this.CurrencyList = rates |> Seq.map (fun x -> x.Key)
         
+    member this.Convert (currencyFrom: CurrencyCode) (currencyTo: CurrencyCode) sum =
+        let convertCore (sum: decimal) rateTo rateFrom = Math.Round(sum * rateTo / rateFrom, 2)
+        
+        let (toFound, toRate) = rates.TryGetValue(currencyTo)
+        if toFound then 
+            if currencyFrom = baseCurrency.code then
+                ValueSome (convertCore sum toRate 1m)
+            else
+                let (found, value) = rates.TryGetValue(currencyFrom)
+                if found then
+                    ValueSome (convertCore sum toRate value)
+                else
+                    ValueNone
+        else
+            ValueNone
+        
+module Currency =        
     module private Factory =        
         let makeRateStore baseCurrency date (exchangeRates: struct(CurrencyName * decimal) seq) =
-            let rates = CurrencyRateStore()
+            let rates = Types.CurrencyRateStore()
+           
             let (isExtract, baseCurrencyCode) = Types.CurrencyCodeMap.TryGetValue(baseCurrency)
             if isExtract then
                 exchangeRates |> Seq.iter (fun struct(name, rate) ->
                     let code = Types.CurrencyCodeMap.GetValueOrDefault(name)
                     rates.Add(code, rate))
                         
-                ValueSome (CurrencyConverter({ name = baseCurrencyCode; rate = 1m }, rates, date))
+                ValueSome (CurrencyConverter({ code = baseCurrencyCode; rate = 1m }, rates, date))
             else
                 ValueNone
             

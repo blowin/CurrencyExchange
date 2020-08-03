@@ -278,14 +278,22 @@ module Currency =
         let url = sprintf "https://api.exchangerate.host/timeseries?start_date=%s&end_date=%s" (dateFrom.ToString "yyyy-MM-dd") (dateTo.ToString "yyyy-MM-dd")
         let info = Types.CurrencyByDateRangeApi.Load(url)
         
+        let parseInt (str: string) =
+            let (ok, result) = Int32.TryParse(str)
+            if ok then ValueSome result else ValueNone
+        
         if info.Success then
             let res = (info.Rates.JsonValue.Properties()
                 |> Seq.map (fun (name, prop) ->
                         match name.Split('-') with
                             | [| year; month; day |] ->
-                                let date = DateTime(Int32.Parse(year), Int32.Parse(month), Int32.Parse(day))
-                                let exchangeRateSeq = Factory.convertJsonToExchangeRateSeq prop
-                                Factory.makeRateStore info.Base date exchangeRateSeq
+                                match struct(parseInt year, parseInt month, parseInt day) with
+                                    | struct(ValueSome year, ValueSome month, ValueSome day) ->
+                                        let date = DateTime(year, month, day)
+                                        let exchangeRateSeq = Factory.convertJsonToExchangeRateSeq prop
+                                        
+                                        Factory.makeRateStore info.Base date exchangeRateSeq
+                                    | _ -> ValueNone
                             | _ ->
                                 ValueNone
                     )

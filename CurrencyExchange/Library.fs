@@ -3,6 +3,7 @@
 open System
 open System.Collections.Generic
 open FSharp.Data
+open Microsoft.FSharp.Reflection
 
 type CurrencyName = string
 
@@ -179,11 +180,11 @@ type CurrencyCode =
     | ZMW
     | ZWL
 
-type CurrencyRateStore = Dictionary<CurrencyName, decimal>
+type CurrencyRateStore = Dictionary<CurrencyCode, decimal>
 
 [<Struct>]
 type CurrencyRate = {
-    name: CurrencyName
+    name: CurrencyCode
     rate: decimal
 }
 
@@ -196,12 +197,12 @@ type CurrencyConverter(baseCurrency: CurrencyRate, rates: CurrencyRateStore, dat
     member this.Convert (currencyFrom: CurrencyCode) (currencyTo: CurrencyCode) sum =
         let convertCore (sum: decimal) rateTo rateFrom = Math.Round(sum * rateTo / rateFrom, 2)
         
-        let (toFound, toRate) = rates.TryGetValue(currencyTo.ToString())
+        let (toFound, toRate) = rates.TryGetValue(currencyTo)
         if toFound then 
-            if currencyFrom.ToString() = this.BaseCurrency then
+            if currencyFrom = this.BaseCurrency then
                 ValueSome (convertCore sum toRate 1m)
             else
-                let (found, value) = rates.TryGetValue(currencyFrom.ToString())
+                let (found, value) = rates.TryGetValue(currencyFrom)
                 if found then
                     ValueSome (convertCore sum toRate value)
                 else
@@ -214,12 +215,28 @@ module Currency =
         type CurrencyByDateApi = JsonProvider<"https://api.exchangerate.host/2020-08-03">
         type CurrencyByDateRangeApi = JsonProvider<"https://api.exchangerate.host/timeseries?start_date=2020-01-01&end_date=2020-01-04">
         
-    module private Factory =
+        let CurrencyCodeMap =
+            let map = Dictionary<CurrencyName, CurrencyCode>()
+            let currencyCodeType = typeof<CurrencyCode>
+            FSharpType.GetUnionCases(currencyCodeType)
+                |> Array.iter (fun x ->
+                        let currencyCode = (currencyCodeType.GetProperty(x.Name).GetValue(null) :?> CurrencyCode)
+                        map.Add(x.Name, currencyCode)
+                    )
+            map
+        
+    module private Factory =        
         let makeRateStore baseCurrency date (exchangeRates: struct(CurrencyName * decimal) seq) =
             let rates = CurrencyRateStore()
-            exchangeRates |> Seq.iter (fun struct(name, rate) -> rates.Add(name, rate))
-                    
-            CurrencyConverter({ name = baseCurrency; rate = 1m }, rates, date)
+            let (isExtract, baseCurrencyCode) = Types.CurrencyCodeMap.TryGetValue(baseCurrency)
+            if isExtract then
+                exchangeRates |> Seq.iter (fun struct(name, rate) ->
+                    let code = Types.CurrencyCodeMap.GetValueOrDefault(name)
+                    rates.Add(code, rate))
+                        
+                ValueSome (CurrencyConverter({ name = baseCurrencyCode; rate = 1m }, rates, date))
+            else
+                ValueNone
             
         let convertJsonToExchangeRateSeq (jsonValue: JsonValue) =
             (jsonValue.Properties()
@@ -239,13 +256,14 @@ module Currency =
                             | [| year; month; day |] ->
                                 let date = DateTime(Int32.Parse(year), Int32.Parse(month), Int32.Parse(day))
                                 let exchangeRateSeq = Factory.convertJsonToExchangeRateSeq prop
-                                ValueSome (Factory.makeRateStore info.Base date exchangeRateSeq)
+                                Factory.makeRateStore info.Base date exchangeRateSeq
                             | _ ->
                                 ValueNone
                     )
                   |> Seq.filter (fun x -> x.IsSome)
                   |> Seq.map (fun x -> x.Value)
                   |> Seq.toArray)
+            
             ValueSome res
         else
             ValueNone
@@ -256,7 +274,7 @@ module Currency =
         
         if info.Success then
             let exchangeRateSeq = Factory.convertJsonToExchangeRateSeq info.Rates.JsonValue
-            ValueSome (Factory.makeRateStore info.Base info.Date exchangeRateSeq)
+            Factory.makeRateStore info.Base info.Date exchangeRateSeq
         else
             ValueNone
         

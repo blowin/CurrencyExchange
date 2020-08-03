@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "CurrencyExchange", "CurrencyExchange\CurrencyExchange.fsproj", "{BD311654-2DBF-4707-B172-AAACF31EAACE}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "CurrencyExchangeConsole", "CurrencyExchangeConsole\CurrencyExchangeConsole.fsproj", "{2722DF1D-0632-4217-A139-FEFEF2C37ED4}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{BD311654-2DBF-4707-B172-AAACF31EAACE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BD311654-2DBF-4707-B172-AAACF31EAACE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BD311654-2DBF-4707-B172-AAACF31EAACE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BD311654-2DBF-4707-B172-AAACF31EAACE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2722DF1D-0632-4217-A139-FEFEF2C37ED4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2722DF1D-0632-4217-A139-FEFEF2C37ED4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2722DF1D-0632-4217-A139-FEFEF2C37ED4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2722DF1D-0632-4217-A139-FEFEF2C37ED4}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

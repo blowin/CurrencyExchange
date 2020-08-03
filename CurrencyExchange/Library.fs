@@ -4,8 +4,6 @@ open System
 open System.Collections.Generic
 open FSharp.Data
 
-type CurrencyApi = JsonProvider<"https://api.exchangerate.host/2020-08-03">
-
 type CurrencyName = string
 
 type CurrencyCode =
@@ -211,25 +209,54 @@ type CurrencyConverter(baseCurrency: CurrencyRate, rates: CurrencyRateStore, dat
         else
             ValueNone
         
-module Currency = 
-    let byDate (date: DateTime) =
-        let url = sprintf "https://api.exchangerate.host/%s" (date.ToString "yyyy-MM-dd")
-        let info = CurrencyApi.Load(url)
+module Currency =
+    module private Types =
+        type CurrencyByDateApi = JsonProvider<"https://api.exchangerate.host/2020-08-03">
+        type CurrencyByDateRangeApi = JsonProvider<"https://api.exchangerate.host/timeseries?start_date=2020-01-01&end_date=2020-01-04">
+        
+    module private Factory =
+        let makeRateStore baseCurrency date (exchangeRates: struct(CurrencyName * decimal) seq) =
+            let rates = CurrencyRateStore()
+            exchangeRates |> Seq.iter (fun struct(name, rate) -> rates.Add(name, rate))
+                    
+            CurrencyConverter({ name = baseCurrency; rate = 1m }, rates, date)
+            
+        let convertJsonToExchangeRateSeq (jsonValue: JsonValue) =
+            (jsonValue.Properties()
+                |> Seq.map (
+                        fun (name, value) -> struct(name, (value.AsDecimal()))
+                    )
+               )
+    
+    let between (dateFrom: DateTime) (dateTo: DateTime) =
+        let url = sprintf "https://api.exchangerate.host/timeseries?start_date=%s&end_date=%s" (dateFrom.ToString "yyyy-MM-dd") (dateTo.ToString "yyyy-MM-dd")
+        let info = Types.CurrencyByDateRangeApi.Load(url)
         
         if info.Success then
-            let rates = CurrencyRateStore()
-            info.Rates.JsonValue.Properties() |>
-                Array.iter (fun x ->
-                    let (name, value) = x                    
-                    rates.Add(name, value.AsDecimal()))
-                    
-            ValueSome (
-                          CurrencyConverter(
-                                               { name = info.Base; rate = 1m },
-                                               rates,
-                                               info.Date
-                                           )
-                      )
+            let res = (info.Rates.JsonValue.Properties()
+                |> Seq.map (fun (name, prop) ->
+                        match name.Split('-') with
+                            | [| year; month; day |] ->
+                                let date = DateTime(Int32.Parse(year), Int32.Parse(month), Int32.Parse(day))
+                                let exchangeRateSeq = Factory.convertJsonToExchangeRateSeq prop
+                                ValueSome (Factory.makeRateStore info.Base date exchangeRateSeq)
+                            | _ ->
+                                ValueNone
+                    )
+                  |> Seq.filter (fun x -> x.IsSome)
+                  |> Seq.map (fun x -> x.Value)
+                  |> Seq.toArray)
+            ValueSome res
+        else
+            ValueNone
+    
+    let byDate (date: DateTime) =
+        let url = sprintf "https://api.exchangerate.host/%s" (date.ToString "yyyy-MM-dd")
+        let info = Types.CurrencyByDateApi.Load(url)
+        
+        if info.Success then
+            let exchangeRateSeq = Factory.convertJsonToExchangeRateSeq info.Rates.JsonValue
+            ValueSome (Factory.makeRateStore info.Base info.Date exchangeRateSeq)
         else
             ValueNone
         

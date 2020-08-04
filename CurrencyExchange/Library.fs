@@ -213,6 +213,7 @@ type CurrencyFluctuation = {
 }
 
 module private Api =
+    type CurrencyConvert = JsonProvider<"https://api.exchangerate.host/convert?from=USD&to=BYN&date=2020-08-04&places=2">
     type CurrencyInfo = JsonProvider<"https://api.exchangerate.host/symbols">
     type CurrencyByDate = JsonProvider<"https://api.exchangerate.host/2020-08-03">
     type CurrencyByDateRange = JsonProvider<"https://api.exchangerate.host/timeseries?start_date=2020-01-01&end_date=2020-01-04">
@@ -315,6 +316,17 @@ module Currency =
             ValueSome result
         else
             ValueNone
+    
+    let convertRate (fromCurrency: CurrencyCode) (toCurrency: CurrencyCode) (date: DateTime) =
+        let url = (sprintf "https://api.exchangerate.host/convert?from=%s&to=%s&date=%s&places=2"
+                    (fromCurrency |> AsString)
+                    (toCurrency |> AsString)
+                    (date |> dateTimeAsString) 
+                  )
+        
+        let info = Api.CurrencyConvert.Load(url)
+        
+        if info.Success then ValueSome info.Info.Rate else ValueNone
     
     let fluctuationBetween (selectCurrency: SelectCurrency) (dateFrom: DateTime) (dateTo: DateTime) =
         let url = (sprintf "https://api.exchangerate.host/fluctuation?start_date=%s&end_date=%s"

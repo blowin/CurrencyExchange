@@ -184,7 +184,7 @@ type CurrencyCode =
 [<Struct>]
 type SelectCurrency =
     | All
-    | Only of CurrencyCode array
+    | Only of CurrencyCode seq
 
 [<Struct>]
 type CurrencyInfo = {
@@ -198,10 +198,25 @@ type CurrencyRate = {
     rate: decimal
 }
 
+type CurrencyFluctuationRate = {
+    code: CurrencyCode
+    change: decimal
+    changePct: decimal
+    startRate: decimal
+    endRate: decimal
+}
+
+type CurrencyFluctuation = {
+    startDate: DateTime
+    endDate: DateTime
+    rates: CurrencyFluctuationRate array
+}
+
 module private Api =
     type CurrencyInfo = JsonProvider<"https://api.exchangerate.host/symbols">
     type CurrencyByDate = JsonProvider<"https://api.exchangerate.host/2020-08-03">
     type CurrencyByDateRange = JsonProvider<"https://api.exchangerate.host/timeseries?start_date=2020-01-01&end_date=2020-01-04">
+    type FluctuationByDateRange = JsonProvider<"https://api.exchangerate.host/fluctuation?start_date=2020-01-01&end_date=2020-01-04">
 
 module private Types =
         type public CurrencyRateStore = Dictionary<CurrencyCode, decimal>
@@ -268,17 +283,17 @@ module Currency =
         match currencyInfo with
             | All -> url
             | Only arr ->
-                if arr = null || arr.Length = 0 then url
+                if arr = null then url
                 else
-                    let builder = (StringBuilder(value = url).Append("?symbols=").Append(arr.[0]))
-                    arr
-                        |> Seq.skip 1
-                        |> Seq.fold
-                               (fun (buff: StringBuilder) o -> buff.Append(',').Append(o))
-                               (builder)
-                        |> AsString
+                    let builder = StringBuilder(value = url)
+                    arr |> Seq.iteri (fun index obj ->
+                            if index = 0 then builder.Append("?symbols=").Append(obj) |> ignore
+                            else builder.Append(',').Append(obj) |> ignore
+                                
+                        )
+                    builder |> AsString
     
-    let allCurrency =
+    let allCurrencyInfo =
         let parseInfo = Api.CurrencyInfo.GetSample()
         if parseInfo.Success then
             let result = (parseInfo.Symbols.JsonValue.Properties()
@@ -301,8 +316,50 @@ module Currency =
         else
             ValueNone
     
-    let between (dateFrom: DateTime) (dateTo: DateTime) (selectCurrency: SelectCurrency) =
-        let url = (sprintf "https://api.exchangerate.host/timeseries?start_date=%s&end_date=%s" (dateFrom |> dateTimeAsString) (dateTo |> dateTimeAsString)) |> appendCurrencyInfo selectCurrency
+    let fluctuationBetween (selectCurrency: SelectCurrency) (dateFrom: DateTime) (dateTo: DateTime) =
+        let url = (sprintf "https://api.exchangerate.host/fluctuation?start_date=%s&end_date=%s"
+                       (dateFrom |> dateTimeAsString)
+                       (dateTo |> dateTimeAsString)
+                  ) |> appendCurrencyInfo selectCurrency
+        
+        let info = Api.FluctuationByDateRange.Load(url)
+        
+        if info.Success then
+            
+            let asCurrencyFluctuation currency (jsonObject: JsonValue) =
+                let (ok, code) = Types.CurrencyCodeMap.TryGetValue(currency)
+                if ok then
+                    ValueSome
+                        {
+                            code = code; 
+                            change = jsonObject.GetProperty("change").AsDecimal(); 
+                            changePct = jsonObject.GetProperty("change_pct").AsDecimal(); 
+                            startRate = jsonObject.GetProperty("start_rate").AsDecimal(); 
+                            endRate = jsonObject.GetProperty("end_rate").AsDecimal()
+                        }
+                else
+                    ValueNone
+            
+            ValueSome ({
+                           startDate = info.StartDate
+                           endDate = info.EndDate
+                           rates = info.Rates.JsonValue.Properties()
+                                        |> Seq.map(fun (currencyName, obj) -> asCurrencyFluctuation currencyName obj)
+                                        |> Seq.filter (fun x -> x.IsSome)
+                                        |> Seq.map (fun x -> x.Value)
+                                        |> Seq.toArray
+                       })
+        else
+            ValueNone
+    
+    let fluctuationBetweenWithAllCurrency = fluctuationBetween (SelectCurrency.All)
+    
+    let between (selectCurrency: SelectCurrency) (dateFrom: DateTime) (dateTo: DateTime) =
+        let url = (sprintf "https://api.exchangerate.host/timeseries?start_date=%s&end_date=%s"
+                       (dateFrom |> dateTimeAsString)
+                       (dateTo |> dateTimeAsString)
+                  ) |> appendCurrencyInfo selectCurrency
+                  
         let info = Api.CurrencyByDateRange.Load(url)
         
         let parseInt (str: string) =
@@ -332,7 +389,9 @@ module Currency =
         else
             ValueNone
     
-    let byDate (date: DateTime) (selectCurrency: SelectCurrency) =
+    let betweenWithAllCurrency = between SelectCurrency.All
+    
+    let byDate (selectCurrency: SelectCurrency) (date: DateTime) =
         let url = (sprintf "https://api.exchangerate.host/%s" (date |> dateTimeAsString)) |> appendCurrencyInfo selectCurrency
         let info = Api.CurrencyByDate.Load(url)
         
@@ -342,3 +401,5 @@ module Currency =
         else
             ValueNone
         
+    let byDateWithAllCurrency = byDate SelectCurrency.All
+    

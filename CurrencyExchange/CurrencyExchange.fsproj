@@ -2,6 +2,14 @@
 
     <PropertyGroup>
         <TargetFrameworks>netstandard2.0;netcoreapp3.1</TargetFrameworks>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+        <Title>Blowin.CurrencyExchange.Api</Title>
+        <Authors>Blowin</Authors>
+        <Description>project provide currency converter. use api.exchangerate</Description>
+        <PackageProjectUrl>https://github.com/blowin/CurrencyExchange</PackageProjectUrl>
+        <PackageIconUrl>https://github.com/blowin/CurrencyExchange/blob/master/icon.png</PackageIconUrl>
+        <RepositoryUrl>https://github.com/blowin/CurrencyExchange</RepositoryUrl>
+        <PackageTags>api currency currencyexchange</PackageTags>
     </PropertyGroup>
 
     <ItemGroup>

@@ -261,8 +261,10 @@ module Currency =
             let (isExtract, baseCurrencyCode) = Types.CurrencyCodeMap.TryGetValue(baseCurrency)
             if isExtract then
                 exchangeRates |> Seq.iter (fun struct(name, rate) ->
-                    let code = Types.CurrencyCodeMap.GetValueOrDefault(name)
-                    rates.Add(code, rate))
+                    let (ok, code) = Types.CurrencyCodeMap.TryGetValue(name)
+                    
+                    if ok then                        
+                        rates.Add(code, rate))
                         
                 ValueSome (CurrencyConverter({ code = baseCurrencyCode; rate = 1m }, rates, date))
             else
